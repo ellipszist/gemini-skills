@@ -17,7 +17,7 @@ npx skills add google-gemini/gemini-skills --skill gemini-api-dev --global
 Or use the Context7 skills CLI.
 
 ```sh
-# Browse and install.
+# Interactively browse and install skills.
 npx ctx7 skills install /google-gemini/gemini-skills
 
 # Install a specific skill.
