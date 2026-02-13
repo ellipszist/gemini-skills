@@ -36,7 +36,7 @@ The Gemini API provides access to Google's most advanced AI models. Key capabili
   - Latest version can be found here: https://central.sonatype.com/artifact/com.google.genai/google-genai/versions (let's call it `LAST_VERSION`) 
   - Install in `build.gradle`:
     ```
-    implementation("com.google.genai:google-genai  fpr Java:${LAST_VERSION}")
+    implementation("com.google.genai:google-genai:${LAST_VERSION}")
     ```
   - Install Maven dependency in `pom.xml`:
     ```
