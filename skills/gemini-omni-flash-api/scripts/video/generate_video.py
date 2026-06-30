@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """
-Generates and edits videos using the Gemini Omni Flash model via the RESTful Interactions API.
+Generates and edits videos using the Gemini Omni Flash model via the google-genai Interactions API.
 Can automatically upload local media references using the Files API.
 Supports parallel execution of multiple generations using Python standard library.
-Uses only Python standard library (no external dependencies).
+Uses the official google-genai SDK.
 """
 
 import argparse
@@ -15,10 +15,11 @@ import sys
 import time
 import urllib.request
 import urllib.error
+import uuid
+from google import genai
+from google.genai import types
 
 # Load local upload helper logic inline to prevent dependency issues
-import sys
-import os
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from upload_file import upload_file, wait_for_active
 
@@ -113,15 +114,16 @@ def resolve_or_upload_asset(asset_path, mime_type, api_key, strip_audio=False):
             try:
                 subprocess.run(["ffmpeg", "-version"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=True)
             except (subprocess.SubprocessError, FileNotFoundError):
-                print("Error: ffmpeg is not installed or not found in system PATH.", file=sys.stderr)
-                print("ffmpeg is required to strip audio from local videos.", file=sys.stderr)
-                sys.exit(1)
+                raise RuntimeError(
+                    "Error: ffmpeg is not installed or not found in system PATH. "
+                    "ffmpeg is required to strip audio from local videos."
+                )
 
             try:
                 os.makedirs("media", exist_ok=True)
                 base_name = os.path.basename(asset_path)
                 name, ext = os.path.splitext(base_name)
-                temp_stripped_path = os.path.join("media", f"temp_stripped_{name}{ext}")
+                temp_stripped_path = os.path.join("media", f"temp_stripped_{name}_{uuid.uuid4().hex}{ext}")
 
                 # Fast stream-copy audio stripping
                 cmd = ["ffmpeg", "-y", "-i", asset_path, "-c:v", "copy", "-an", temp_stripped_path]
@@ -148,26 +150,18 @@ def resolve_or_upload_asset(asset_path, mime_type, api_key, strip_audio=False):
             except Exception as e:
                 print(f"Warning: Failed to remove temporary file {temp_stripped_path}: {e}", file=sys.stderr)
 
-        return normalized, file_meta.get("mimeType")
+        # Handle both mimeType and mime_type key formats returned from upload_file
+        returned_mime = file_meta.get("mimeType") or file_meta.get("mime_type")
+        return normalized, returned_mime
     else:
         raise FileNotFoundError(f"Asset path '{asset_path}' is neither a valid File API URI nor a local file path.")
 
-def find_output_video_part(interaction_data):
-    """Searches interaction response steps for the generated video content block."""
-    steps = interaction_data.get("steps", [])
-    for step in reversed(steps):
-        if step.get("type") == "model_output":
-            for part in reversed(step.get("content", [])):
-                if part.get("type") == "video":
-                    return part
-    return None
-
 def download_video_file(file_uri, output_path, api_key):
-    """Downloads generated video file from URI using alt=media standard."""
+    """Downloads generated video file from URI using alt=media standard in a memory-safe, chunked manner."""
     separator = "&" if "?" in file_uri else "?"
     download_url = f"{file_uri}{separator}alt=media"
     
-    print(f"Downloading video from {file_uri} to {output_path}...")
+    print(f"Downloading video from {file_uri} to {output_path} in chunked mode...")
     req = urllib.request.Request(download_url)
     req.add_header("x-goog-api-key", api_key)
     
@@ -178,13 +172,17 @@ def download_video_file(file_uri, output_path, api_key):
                 os.makedirs(parent_dir, exist_ok=True)
                 
             with open(output_path, "wb") as f:
-                f.write(resp.read())
+                while True:
+                    chunk = resp.read(8192)
+                    if not chunk:
+                        break
+                    f.write(chunk)
         print(f"Video successfully saved to: {output_path}")
     except urllib.error.HTTPError as e:
         raise RuntimeError(f"Error downloading video file: {e.code} - {e.read().decode()}")
 
 def generate_video(prompt, api_key, model="gemini-omni-flash-preview", aspect_ratio="16:9", duration=None, image_path=None, video_path=None, output_path="output.mp4", strip_audio=False, previous_interaction_id=None):
-    """Creates an interaction with the video model and downloads the resulting video."""
+    """Creates an interaction with the video model and downloads the resulting video using the official google-genai SDK."""
     duration = parse_and_validate_duration(duration)
     input_parts = []
 
@@ -230,7 +228,7 @@ def generate_video(prompt, api_key, model="gemini-omni-flash-preview", aspect_ra
         "text": prompt
     })
 
-    # Construct the payload
+    # Construct the config
     video_config = {
         "type": "video",
         "aspect_ratio": aspect_ratio,
@@ -239,51 +237,38 @@ def generate_video(prompt, api_key, model="gemini-omni-flash-preview", aspect_ra
     if duration:
         video_config["duration"] = duration
 
-    payload = {
-        "model": model,
-        "input": input_parts,
-        "response_format": video_config
-    }
-    if previous_interaction_id:
-        payload["previous_interaction_id"] = previous_interaction_id
-
-    url = "https://generativelanguage.googleapis.com/v1beta/interactions"
-    headers = {
-        "Content-Type": "application/json",
-        "Api-Revision": "2026-05-20",
-        "x-goog-api-key": api_key
-    }
-    
-    body = json.dumps(payload).encode("utf-8")
-    
-    print(f"\nSending generation request to Interactions API using model '{model}'...")
+    print(f"\nSending generation request using official google-genai SDK and model '{model}'...")
     print(f"Prompt: '{prompt}' | Aspect Ratio: {aspect_ratio} | Duration: {duration}")
-    print(f"Request Payload:\n{json.dumps(payload, indent=2)}")
     
-    req = urllib.request.Request(url, data=body, headers=headers, method="POST")
+    # Initialize the client and call interactions.create
+    client = genai.Client(api_key=api_key)
     try:
-        with urllib.request.urlopen(req, timeout=480) as resp:
-            response_data = json.loads(resp.read().decode("utf-8"))
-    except urllib.error.HTTPError as e:
-        raise RuntimeError(f"Error generating video: {e.code} - {e.read().decode()}")
+        interaction = client.interactions.create(
+            model=model,
+            input=input_parts,
+            response_format=video_config,
+            previous_interaction_id=previous_interaction_id
+        )
+    except Exception as e:
+        raise RuntimeError(f"Error generating video via SDK: {e}")
 
     print(f"Generation complete for '{prompt}'! Processing response...")
     
-    interaction_id = response_data.get("id")
+    interaction_id = interaction.id
     if interaction_id:
         print(f"Interaction ID: {interaction_id}")
     
-    video_part = find_output_video_part(response_data)
-    if not video_part:
+    output_video = interaction.output_video
+    if not output_video or not output_video.uri:
         err_msg = f"No video content found in response for '{prompt}'."
         if video_path:
             err_msg += (
                 "\nWARNING: IMPORTANT REGIONAL RESTRICTION: Uploading videos to use for video edits is "
                 "not available in the EEA, Switzerland, United Kingdom, and some US states."
             )
-        raise RuntimeError(f"{err_msg}\nResponse: {json.dumps(response_data)}")
+        raise RuntimeError(f"{err_msg}\nResponse output_video field: {output_video}")
 
-    video_uri = video_part.get("uri")
+    video_uri = output_video.uri
     print(f"Generated video URI for '{prompt}': {video_uri}")
     
     # Download the final video
@@ -329,7 +314,7 @@ def run_job(job, api_key):
         return {"job": job, "status": "FAILED", "error": str(e)}
 
 def main():
-    parser = argparse.ArgumentParser(description="Generate and edit videos using Gemini Omni Flash model via REST (supports parallel batch execution).")
+    parser = argparse.ArgumentParser(description="Generate and edit videos using Gemini Omni Flash model via google-genai SDK (supports parallel batch execution).")
     parser.add_argument("prompt", nargs="?", help="Text prompt / instruction for a single video generation")
     parser.add_argument("--image", action="append", help="Optional local image path or File API URI for referencing / image-to-video (can be specified multiple times)")
     parser.add_argument("--video", action="append", help="Optional local video path or File API URI for editing / extending (can be specified multiple times)")

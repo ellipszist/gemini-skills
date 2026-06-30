@@ -1,6 +1,6 @@
 ---
 name: gemini-omni-flash-api
-description: Generative AI video skill focused on video editing, image-referenced generation, and first-frame-to-video capabilities using the Gemini Interactions API.
+description: Use this skill for generative video editing, text-to-video, image-referenced video generation, and first-frame-to-video transition animations using the official google-genai SDK. Includes workflows for pre-processing/optimizing high-resolution or long source videos with ffmpeg, stripping audio for full sound regeneration, and handling turn-by-turn video editing and parallel execution.
 ---
 
 # Gemini Omni Flash Skill
@@ -20,7 +20,7 @@ This skill uses the Gemini Omni Flash model (`gemini-omni-flash-preview`) to per
 ## Workflow
 
 1. **Analyze request**: Determine the target task (e.g., first-frame-to-video, reference-guided editing) and identify any input media assets.
-2. **Run RESTful scripts**:
+2. **Run SDK scripts**:
 
    * Directly run the appropriate utility (`scripts/video/generate_video.py` or `scripts/upload_file.py`).
    * Configure settings like `--aspect-ratio` (e.g. `16:9`, `9:16`) and `--duration` (any integer between `3` and `10` seconds, e.g. `3`, `5`, `10`).
@@ -33,8 +33,13 @@ This skill uses the Gemini Omni Flash model (`gemini-omni-flash-preview`) to per
 * **Files API**: Input media files (such as reference images and videos) must be uploaded via the [Files API](https://ai.google.dev/gemini-api/docs/interactions/files) first before being referenced in generations. The uploaded file URI and MIME type are then included in the `interactions.create` input parts array.
 * **[Interactions API Skill Reference](https://github.com/google-gemini/gemini-skills/blob/main/skills/gemini-interactions-api/SKILL.md)**: Platform-wide guidelines, current model specifications, and SDK usage rules for the Interactions API.
 
-## Dependencies
+## Dependencies and Prerequisites
 
+* **Python SDK (`google-genai`)**: Requires `google-genai >= 2.10.0` (Python) to support the new `interactions` client attribute. Install or upgrade using:
+  ```bash
+  pip install -U google-genai
+  ```
+* **Python Runtime**: Requires **Python >= 3.10** (for compatibility with modern `google-genai` SDK types and methods).
 * **ffmpeg & ffprobe**: `prep_video.py`, `inspect_video.py`, and `generate_video.py` (when stripping audio via `--strip-audio`) require `ffmpeg` and `ffprobe` binaries installed and available in your system `PATH`.
 
 ## Available scripts

@@ -15,8 +15,9 @@ description: Use this skill when writing code that calls the Gemini API for text
 - `gemini-3.5-flash`: 1M tokens, fast, balanced performance, multimodal
 - `gemini-3.1-pro-preview`: 1M tokens, complex reasoning, coding, research
 - `gemini-3.1-flash-lite`: cost-efficient, fastest performance for high-frequency, lightweight tasks
-- `gemini-3-pro-image`: 65k / 32k tokens, image generation and editing
-- `gemini-3.1-flash-image`: 65k / 32k tokens, image generation and editing
+- `gemini-3-pro-image` (Nano Banana Pro): 65k / 32k tokens, high-quality image generation and editing
+- `gemini-3.1-flash-image` (Nano Banana 2): 65k / 32k tokens, fast, efficient image generation and editing
+- `gemini-3.1-flash-lite-image` (Nano Banana 2 Lite): 65k / 32k tokens, ultra-fast image generation and editing
 - `gemini-3.1-flash-tts-preview`: expressive text-to-speech with Director's Chair prompting
 - `gemini-omni-flash-preview`: video generation, image-referenced video generation, first-frame-to-video, and video editing
 - `gemma-4-31b-it`: Gemma 4 dense model, 31B parameters
